@@ -129,7 +129,7 @@ def c_path():
     with tempfile.TemporaryDirectory(prefix=".build-", dir=cache) as tmp:
         subprocess.run(["cmake", "-S", str(source), "-B", tmp,
                         "-DS2A_REWRITER_DEPS=" + str(deps), "-DCMAKE_BUILD_TYPE=Release"]
-                       + (["-DCMAKE_MSVC_RUNTIME_LIBRARY=MultiThreaded", "-DCMAKE_POLICY_DEFAULT_CMP0091=NEW"] if os.name == "nt" else []),   # Windows 静态 C 运行库：玩家机不用另装 VC++ 运行库
+                       + (["-T", "ClangCL", "-DCMAKE_MSVC_RUNTIME_LIBRARY=MultiThreaded", "-DCMAKE_POLICY_DEFAULT_CMP0091=NEW"] if os.name == "nt" else []),   # Windows 静态 C 运行库：玩家机不用另装 VC++ 运行库
                        check=True, stdout=sys.stderr)
         subprocess.run(["cmake", "--build", tmp, "--config", "Release", "--target", "s2a-rewrite", "--parallel", "2"],
                        check=True, stdout=sys.stderr)
