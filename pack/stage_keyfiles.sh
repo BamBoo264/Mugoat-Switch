@@ -24,7 +24,15 @@ romfs_writer_oids() {
   engine_snap "$1" romfsIndexOids \
     || git -C "$1" rev-parse HEAD:services/S2A.Services/RomFsIndex.cs HEAD:services/romfs_index HEAD:services/romfs_index.sh HEAD:compat/tree/Directory.Packages.props 2> /dev/null
 }
-stage_files_key() {
+_stage_sha256() {
+  if command -v sha256sum >/dev/null 2>&1; then
+    sha256sum
+  else
+    shasum -a 256
+  fi
+}
+stage_files_key() (
+  set -o pipefail
   local st=${1:?阶段} r=${2:-$(cd "$(dirname "${BASH_SOURCE[0]}")/.." && pwd)} t f out
   engine_snap "$r" "stageFilesKeys.$st" && return 0
   t=$r/pack/stage_inputs/$st.tsv; [ -f "$t" ] || { echo "【红】没有输入声明表 $t" >&2; return 1; }
@@ -39,12 +47,12 @@ stage_files_key() {
   local eq=$r/pack/stage_inputs/equiv.tsv mode typ obj path h
   printf '%s\n' "$out" | while IFS=$' \t' read -r mode typ obj path; do
     if [ -f "$eq" ] && grep -q "^$path	" "$eq"; then
-      h=$(shasum -a 256 < "$r/$path" | cut -c1-16)
+      h=$(_stage_sha256 < "$r/$path" | cut -c1-16) || exit 1
       obj=$(LC_ALL=C awk -F'\t' -v p="$path" -v h="$h" -v o="$obj" '$1 == p && $2 == h { o = $3 } END { print o }' "$eq")
     fi
     printf '%s %s\n' "$obj" "$path"
-  done | shasum -a 256 | cut -c1-16
-}
+  done | _stage_sha256 | cut -c1-16
+)
 
 # 实际读入进判跳过（10-30 出包线根修，tools/stage_deps.py）：声明的输入算阶段键（各阶段原样，存进 .stage_<阶段>），实际读入另存清单 .stage_<阶段>.deps
 #   （动态拼出的路径、数据表、函数里才导入的模块，静态扫不到；本阶段脚本也记进清单）。跳过要两条都成立：阶段键相同，且清单里每个文件的内容与当时相同。

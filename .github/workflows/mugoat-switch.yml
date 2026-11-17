@@ -83,6 +83,11 @@ jobs:
         run: |
           bash compat/fetch_base.sh
           python runtime/rewriter/prepare_deps.py build/rewriter-deps
+          source pack/stage_keyfiles.sh
+          for stage in extract direct direct_seed; do
+            key=$(stage_files_key "$stage" "$PWD")
+            [[ "$key" =~ ^[0-9a-f]{16}$ ]]
+          done
       - name: Package launcher
         shell: pwsh
         run: |
