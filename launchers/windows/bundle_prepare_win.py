@@ -127,7 +127,7 @@ def bundle(target):
     if not ui_lyt._ENC or not os.path.isfile(ui_lyt._ENC):
         raise SystemExit("【红】Yaz0 编码器编不出（graphics/widen/scan/yaz0enc.c，要 clang 或 CC）")
     shutil.copy2(ui_lyt._ENC, tools / "codecs" / ui_lyt.yaz0enc_name())
-    lib = nxfmt._compile_lib()
+    lib = nxfmt._compile_lib(diagnostics=True)
     if not lib:
         raise SystemExit("【红】Yaz0 解码库编不出（graphics/tools/yaz0dec.c，要 cc / clang）")
     shutil.copy2(lib, tools / "codecs" / os.path.basename(lib))

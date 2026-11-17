@@ -2,12 +2,18 @@ name: Build Mugoat Switch
 
 on:
   workflow_dispatch:
+    inputs:
+      shell_run:
+        description: Previous successful iOS shell job run ID (optional)
+        type: string
 
 permissions:
   contents: read
+  actions: read
 
 jobs:
   ios-shell:
+    if: inputs.shell_run == ''
     runs-on: xcode-27
     timeout-minutes: 90
     steps:
@@ -53,6 +59,7 @@ jobs:
 
   windows-launcher:
     needs: ios-shell
+    if: ${{ !cancelled() && (needs.ios-shell.result == 'success' || (needs.ios-shell.result == 'skipped' && inputs.shell_run != '')) }}
     runs-on: windows-2025
     timeout-minutes: 100
     steps:
@@ -69,6 +76,8 @@ jobs:
         with:
           name: mugoat-shell-inputs
           path: inputs
+          github-token: ${{ github.token }}
+          run-id: ${{ inputs.shell_run || github.run_id }}
       - name: Prepare source dependencies
         shell: bash
         run: |

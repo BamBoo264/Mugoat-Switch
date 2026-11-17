@@ -140,11 +140,12 @@ def prebuilt_lib():
     return lib if os.path.isfile(lib) else None
 
 
-def _compile_lib():
+def _compile_lib(*, diagnostics=False):
     pre = prebuilt_lib()
     if pre:
         return pre
-    cc = shutil.which('cc') or shutil.which('clang') or shutil.which('gcc')
+    compilers = ('clang',) if os.name == 'nt' else ('cc', 'clang', 'gcc')
+    cc = next((path for name in compilers if (path := shutil.which(name))), None)
     if not cc or not os.path.isfile(_YAZ0_C):
         return None
     root = os.path.normpath(os.path.join(_HERE, '..', '..'))
@@ -156,7 +157,8 @@ def _compile_lib():
         # Windows（clang 出 MSVC 目标）不认 -fPIC，且共享库默认不导出函数：按名导出 yaz0_decompress
         flags = ['-Wl,/EXPORT:yaz0_decompress'] if os.name == 'nt' else ['-fPIC']
         built = subprocess.run([cc, '-O2', *flags, '-shared', '-o', tmp, _YAZ0_C],
-                               stdout=subprocess.DEVNULL, stderr=subprocess.DEVNULL)
+                               stdout=None if diagnostics else subprocess.DEVNULL,
+                               stderr=None if diagnostics else subprocess.DEVNULL)
         if built.returncode != 0:
             try:
                 os.remove(tmp)
