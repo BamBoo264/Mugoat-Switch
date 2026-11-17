@@ -1,0 +1,90 @@
+name: Build Mugoat Switch
+
+on:
+  workflow_dispatch:
+
+permissions:
+  contents: read
+
+jobs:
+  ios-shell:
+    runs-on: xcode-27
+    timeout-minutes: 90
+    steps:
+      - uses: actions/checkout@v4
+        with:
+          fetch-depth: 0
+      - uses: actions/setup-dotnet@v4
+        with:
+          global-json-file: compat/tree/global.json
+      - name: Select the required iPhone SDK
+        run: |
+          required=$(sed -n 's/^IPHONEOS_SDK_MAJOR=//p' tools/toolchain.env)
+          for xcode in /Applications/Xcode*.app; do
+            export DEVELOPER_DIR="$xcode/Contents/Developer"
+            version=$(xcrun --sdk iphoneos --show-sdk-version 2>/dev/null || true)
+            if [[ "${version%%.*}" == "$required" ]]; then
+              echo "DEVELOPER_DIR=$DEVELOPER_DIR" >> "$GITHUB_ENV"
+              exit 0
+            fi
+          done
+          echo "::error::This runner needs Xcode with iPhoneOS SDK $required."
+          exit 1
+      - name: Prepare shell dependencies
+        run: |
+          brew install python@3.12 bash cmake make meson ninja openssl@3 brotli
+          echo "$(brew --prefix)/bin" >> "$GITHUB_PATH"
+          "$(brew --prefix python@3.12)/bin/python3.12" launchers/macos/prepare_build.py
+      - name: Build shell and prepare Windows inputs
+        run: |
+          export PATH="$PWD/build/venv/bin:$PATH"
+          bash compat/fetch_base.sh
+          bash services/systemdata/make_tzdata.sh --prepare-sources
+          mkdir -p "$RUNNER_TEMP/inputs"
+          bash services/systemdata/make_tzdata.sh --bundle-to "$RUNNER_TEMP/inputs/Tzdata"
+          python pack/fonts/make_open_fonts.py "$RUNNER_TEMP/inputs/Fonts"
+          export S2A_SHARED_FONT_DIR="$RUNNER_TEMP/inputs/Fonts"
+          bash pack/shell_build.sh "$RUNNER_TEMP/inputs/Shell"
+      - uses: actions/upload-artifact@v4
+        with:
+          name: mugoat-shell-inputs
+          path: ${{ runner.temp }}/inputs
+          if-no-files-found: error
+
+  windows-launcher:
+    needs: ios-shell
+    runs-on: windows-2025
+    timeout-minutes: 100
+    steps:
+      - uses: actions/checkout@v4
+        with:
+          fetch-depth: 0
+      - uses: actions/setup-dotnet@v4
+        with:
+          dotnet-version: 10.0.x
+      - uses: actions/setup-python@v5
+        with:
+          python-version: '3.12'
+      - uses: actions/download-artifact@v4
+        with:
+          name: mugoat-shell-inputs
+          path: inputs
+      - name: Prepare source dependencies
+        shell: bash
+        run: |
+          bash compat/fetch_base.sh
+          python runtime/rewriter/prepare_deps.py build/rewriter-deps
+      - name: Package launcher
+        shell: pwsh
+        run: |
+          python -X utf8 launchers/windows/bundle_win.py dist --shell inputs/Shell --tzdata inputs/Tzdata --fonts inputs/Fonts
+          if ($LASTEXITCODE) { exit $LASTEXITCODE }
+          dotnet publish launchers/windows/launcher/App/S2Arm.csproj -c Release -r win-x64 --self-contained true -o dist
+          if ($LASTEXITCODE) { exit $LASTEXITCODE }
+          if (!(Test-Path dist/S2Arm.exe)) { throw 'Launcher executable missing' }
+          Rename-Item dist/S2Arm.exe 'Mugoat Switch.exe'
+      - uses: actions/upload-artifact@v4
+        with:
+          name: Mugoat-Switch-Windows
+          path: dist
+          if-no-files-found: error
